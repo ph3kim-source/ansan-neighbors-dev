@@ -1,0 +1,10 @@
+{
+  "grades": {
+    "A": 7,
+    "B": 2,
+    "C": 2,
+    "X": 3
+  },
+  "criteria_ok": 2,
+  "criteria_total": 5
+}
