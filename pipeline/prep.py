@@ -6,6 +6,11 @@
       2안/data/processed/gu_nat_month.csv    구 x 국적 x 월 (IPF 마진 B)
       2안/data/processed/city_nat_month.csv  시 x 국적 x 월
 
+v2 에서 쓰는 곳  dong_month · gu_nat_month → src/config.py ANCHOR_* → gen_synthetic.py 가상 데이터 총량 보정
+                 (city_nat_month 는 v2 가 읽지 않는다)
+실행             새 달 통계 xlsx 를 data/ 에 넣고  python pipeline\\prep.py  → 그다음 python src\\gen_synthetic.py
+내력             v1(관광객안) src/prep.py 를 2026-11-16 그대로 옮겨 왔다. v1 보관본은 ../_보관/2안_v1_관광객안
+
 함정
   - 동명에 공백이 섞여 있음 ('일    동', '사 이 동', '본오 1동')
   - 5행은 비율 행이므로 데이터로 읽으면 안 됨

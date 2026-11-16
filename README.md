@@ -40,9 +40,11 @@ src/community.py      SQLite 커뮤니티 + 시드
 src/app.py            Streamlit 화면 (시민 5탭 / 관리자 6탭)
 tests/test_smoke.py   스모크 테스트
 pipeline/build_share.py  공유 시연판(../2안_공유) 생성 → github.com/ph3kim-source/ansan-foreign-community-demo
+pipeline/prep.py      공표 외국인주민 통계 xlsx → data/processed/dong_month·gu_nat_month (가상 데이터 총량 보정용)
 docs/기획_결정사항.md   인터뷰 결정·데이터 매핑·5대 기준·가정·백로그
 docs/진행상황.md        완료/남은 일 — 이어서 작업할 때 여기부터
-_archive_v1_관광객안/   v1(관광객 현황판) 보관본
 ```
+
+v1(관광객 현황판)은 2안 밖 `../_보관/2안_v1_관광객안/` 에 보관한다(2026-11-16 이동).
 
 5대 기준 자체 판정과 리스크는 `docs/기획_결정사항.md` §4·§5 참조.
