@@ -35,7 +35,8 @@ COPY_FILES = [
 ]
 REPO_URL = "https://github.com/ph3kim-source/ansan-foreign-community-demo"
 PAGES_URL = "https://ph3kim-source.github.io/ansan-foreign-community-demo/"   # 저장소 설정 → Pages: main / (root)
-CONSOLE_URL = ""   # Streamlit Community Cloud 의 운영 콘솔 주소 — 알면 적는다(비어 있으면 첫 화면은 GitHub 실행 안내로 잇는다)
+# Streamlit Community Cloud 의 운영 콘솔(이 저장소 src/app.py, 공유판 모드) — 2026-11-23 사용자가 알려 줌. 비우면 첫 화면은 GitHub 실행 안내로 잇는다
+CONSOLE_URL = "https://ansan-foreign-community-demo-gb9dqrtsvvb85qo2de8q8w.streamlit.app/"
 APP_HTML = BASE / "html" / "안산이웃_플랫폼.html"
 SUMMARY_HTML = BASE / "html" / "안산이웃_제안요약.html"
 SITE_TEMPLATE = BASE / "pipeline" / "html" / "site.html"
@@ -57,7 +58,7 @@ README = f"""# 안산 이웃 (Ansan Neighbors) — 공유 시연판
 | 화면 | 누가 | 여는 법 |
 |---|---|---|
 | **시민 앱** (휴대폰 웹앱) | 외국인 주민 · 내국인 이웃 | [바로 열기]({PAGES_URL}app/) — 서버 · 설치 없이 브라우저에서 |
-| **운영 콘솔** (Streamlit) | 안산시 담당자 | 이 저장소로 배포한 Streamlit 앱, 또는 아래 '로컬 실행' |
+| **운영 콘솔** (Streamlit) | 안산시 담당자 | [바로 열기]({CONSOLE_URL}) — 한동안 안 열면 잠들어 있어 'Yes, get this app back up!' 을 누릅니다. 또는 아래 '로컬 실행' |
 | **제안 요약** | 심사 · 담당자 | [바로 열기]({PAGES_URL}summary/) |
 
 - 시민 앱: 첫 화면에서 언어 → 국적 → 동을 고르거나 시연 계정을 누릅니다. 홈 · 지도(고향 가게 · 공공 기관 · 고향 사람 많은 곳) · 커뮤니티(언어방) · 소식(행사 · 공지 · 시에 묻기) · 나, 5탭입니다.
@@ -102,7 +103,9 @@ def build_site() -> None:
         shops = list(csv.DictReader(fh))
     with open(BASE / "data" / "public" / "facilities.csv", encoding="utf-8-sig", newline="") as fh:
         facilities = list(csv.DictReader(fh))
-    console = (f'<a class="go" href="{CONSOLE_URL}">운영 콘솔 열기 →</a>' if CONSOLE_URL else
+    console = (f'<a class="go" href="{CONSOLE_URL}">운영 콘솔 열기 →</a>'
+               '<p class="hint">한동안 아무도 안 열면 잠들어 있어요 — 첫 화면의 \'Yes, get this app back up!\' 을 누르면 1분쯤 뒤에 열려요.</p>'
+               if CONSOLE_URL else
                f'<a class="go" href="{REPO_URL}#로컬-실행-운영-콘솔">운영 콘솔 실행 방법 (GitHub) →</a>')
     site = SITE_TEMPLATE.read_text(encoding="utf-8")
     for key, val in {"__SHOPS_N__": str(len(shops)), "__SHOPS_YM__": shops[0]["std_ym"], "__CHECKED__": shops[0]["checked"],

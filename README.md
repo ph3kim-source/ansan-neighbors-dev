@@ -10,7 +10,7 @@
 
 | 누가 | 실행 | 주소 |
 |---|---|---|
-| **누구나** — 링크로 보는 시연판(가상 판 · 설치 없음) | — | https://ph3kim-source.github.io/ansan-foreign-community-demo/ (첫 화면 · `app/` 시민 앱 · `summary/` 제안 요약) |
+| **누구나** — 링크로 보는 시연판(가상 판 · 설치 없음) | — | https://ph3kim-source.github.io/ansan-foreign-community-demo/ (첫 화면 · `app/` 시민 앱 · `summary/` 제안 요약) · 공무원 화면 https://ansan-foreign-community-demo-gb9dqrtsvvb85qo2de8q8w.streamlit.app/ (잠들어 있으면 깨우기 단추) |
 | **시민(외국인 주민 · 내국인 이웃)** — 휴대폰 웹앱 | `앱_실행.bat` (휴대폰으로 보려면 `앱_휴대폰으로_보기.bat`) | http://127.0.0.1:8600 |
 | **안산시 담당자** — 운영 콘솔(Streamlit) | `실행.bat` | http://localhost:8501 |
 
