@@ -128,6 +128,10 @@ const T = {
   'sub.travel': ['여행사', 'Travel agency', '旅行社', 'Турагентство', 'Đại lý du lịch'],
   'sub.translate': ['번역 · 통역', 'Translation', '翻译', 'Перевод', 'Dịch thuật'],
   'sub.support': ['지원 기관', 'Support center', '支援中心', 'Центр поддержки', 'Trung tâm hỗ trợ'],
+  'sub.immigration': ['출입국 · 체류 민원', 'Immigration office', '出入境 · 居留', 'Миграционная служба', 'Xuất nhập cảnh · cư trú'],
+  'sub.job': ['고용센터 · 일자리', 'Employment center', '就业中心', 'Центр занятости', 'Trung tâm việc làm'],
+  'sub.family': ['가족센터 · 다문화가족', 'Family center', '家庭中心 · 多文化家庭', 'Семейный центр', 'Trung tâm gia đình'],
+  'sub.health': ['보건소', 'Public health center', '保健所', 'Центр здоровья', 'Trung tâm y tế công'],
   'cu.cn': ['중국 · 연변', 'Chinese', '中国 · 延边', 'Китайская', 'Trung Quốc'],
   'cu.vn': ['베트남', 'Vietnamese', '越南', 'Вьетнамская', 'Việt Nam'],
   'cu.th': ['태국', 'Thai', '泰国', 'Тайская', 'Thái Lan'],
@@ -165,6 +169,7 @@ const T = {
   'shop.nearLineDong': ['주말 낮에 고향 사람이 많은 동네에 있어요', 'In a neighborhood with many people from home on weekend afternoons', '位于周末白天老乡多的洞', 'В районе, где по выходным днём много земляков', 'Nằm ở phường có nhiều đồng hương vào trưa cuối tuần'],
   'shop.checkedField': ['현장에서 영업 중인 것을 확인했어요({date})', 'Confirmed open on site ({date})', '已现场确认营业中（{date}）', 'Проверено на месте: работает ({date})', 'Đã kiểm tra tại chỗ: đang mở cửa ({date})'],
   'shop.checked': ['안산시 영업 신고 대장에서 영업 중으로 확인했어요({date} 기준)', 'Confirmed open in Ansan’s business license register (as of {date})', '已在安山市营业申报台账中确认营业中（截至{date}）', 'По реестру лицензий Ансана работает (на {date})', 'Đã xác nhận đang kinh doanh trong sổ đăng ký của Ansan (đến {date})'],
+  'shop.officialSrc': ['공개 자료: {src}', 'Public data: {src}', '公开数据：{src}', 'Открытые данные: {src}', 'Dữ liệu công khai: {src}'],
   'shop.cuisineNote': ['음식 · 상품 종류예요. 주인의 국적이 아니에요', 'This is the type of food or goods, not the owner’s nationality', '仅表示食品/商品种类，不代表店主国籍', 'Это тип кухни или товаров, а не гражданство владельца', 'Đây là loại món ăn/hàng hóa, không phải quốc tịch chủ quán'],
   'shop.community': ['이웃이 알려준 곳이에요', 'Shared by a neighbor', '邻居推荐的地方', 'Место от соседа', 'Do hàng xóm giới thiệu'],
 

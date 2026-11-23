@@ -83,7 +83,8 @@ async function start() {
   window.addEventListener('hashchange', route);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheetOpen()) closeSheet(); });
   route();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:' && window.isSecureContext) {
+  // HTML 판(파일 하나 · GitHub Pages)에는 sw.js 가 없다 — build_html.py 의 가짜 서버가 ANSAN_SINGLE_FILE 을 켠다
+  if ('serviceWorker' in navigator && location.protocol !== 'file:' && window.isSecureContext && !window.ANSAN_SINGLE_FILE) {
     navigator.serviceWorker.register('./sw.js').catch(() => { /* 오프라인 캐시 없이도 동작 */ });
   }
 }

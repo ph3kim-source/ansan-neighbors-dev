@@ -680,10 +680,9 @@ user = cm.user_by_persona("official")
 with st.sidebar:
     st.markdown("## 🏘️ 안산 이웃 · 운영 콘솔")
     st.caption("안산시 담당자 화면 — 2안 v0.5" + (" · 🔒 실데이터 판" if IS_REAL else ""))
-    if SHARE_MODE:  # 공유판 · 드라이브 앱 — 서버 판 앱은 없고, 같은 앱을 파일 하나에 담은 HTML 판(가상)이 함께 간다
-        st.info("📱 시민 화면은 **휴대폰 앱**입니다 — 함께 있는 `html/안산이웃_플랫폼.html` 을 내려받아 더블클릭하면 설치 없이 "
-                "열립니다([GitHub 저장소의 html 폴더](https://github.com/ph3kim-source/ansan-foreign-community-demo/tree/main/html)). "
-                "이 콘솔과는 이어져 있지 않습니다.")
+    if SHARE_MODE:  # 공유판 · 드라이브 앱 — 서버 판 앱은 없고, 같은 앱을 파일 하나에 담은 HTML 판(가상)이 GitHub Pages 에 있다
+        st.info("📱 시민 화면은 **휴대폰 앱**입니다 — [여기서 바로 열기](https://ph3kim-source.github.io/ansan-foreign-community-demo/app/) "
+                "(드라이브 앱 폴더라면 `html/안산이웃_플랫폼.html` 더블클릭). 이 콘솔과는 이어져 있지 않습니다.")
     else:
         st.info("📱 시민 화면은 **휴대폰 앱**입니다 — `앱_실행.bat` 을 실행하면 http://127.0.0.1:8600 에서 열립니다.")
     st.divider()

@@ -1,7 +1,10 @@
 """시민 앱 '생활 지도'의 가게 목록 — 공공 상가(상권)정보에서 외국인 주민이 찾는 가게만 고른다 (결정 13).
 
-    python pipeline\\stage_shops.py                 # 4안 폴더의 상가정보(경기, 2026-06)를 찾아 쓴다
-    python pipeline\\stage_shops.py --src <경기 csv> # 다른 판(분기 갱신본)으로
+    python pipeline\\stage_shops.py                 # 가장 최근 판(경기)을 찾아 쓴다 — data/public/raw · ../4안/data
+    python pipeline\\stage_shops.py --src <경기 csv> # 다른 판으로
+
+분기 갱신(2026-11-23 에 2026-09 판으로 처음 함): 공공데이터포털 15083033 '소상공인시장진흥공단_상가(상권)정보'에서 전국 zip 을
+받아(키 · 로그인 없이 받힌다) 경기 파일만 data/public/raw/소상공인시장진흥공단_상가(상권)정보_<기준일>/ 에 둔다(git 제외) → 이 스크립트.
     python pipeline\\stage_shops.py --check         # 분류 결과 개수만 보이고 파일은 쓰지 않는다
 
 입력: 소상공인시장진흥공단 상가(상권)정보 — 공공데이터포털 파일 데이터(이용 제한 없음). 안산(41271 · 41273)만 쓴다.
@@ -49,7 +52,7 @@ UNVERIFIED_CSV = PUBLIC_DIR / "shops_unverified.csv"     # 인허가로 영업�
 FIELDCHECK_CSV = PUBLIC_DIR / "shops_fieldcheck.csv"     # 현장 확인 결과(가게 번호별) — pipeline/import_field_check.py 가 채운다
 OVERRIDES_CSV = PUBLIC_DIR / "shops_overrides.csv"
 SRC_GLOB = "소상공인시장진흥공단_상가(상권)정보_*/*_경기_*.csv"
-SEARCH_DIRS = [BASE.parent / "4안" / "data"]
+SEARCH_DIRS = [PUBLIC_DIR / "raw", BASE.parent / "4안" / "data"]   # 여러 판이 있으면 파일 이름의 기준 연월이 가장 늦은 것
 ANSAN_SGG = ("41271", "41273")
 ANSAN_BOX = (126.50, 37.15, 126.95, 37.42)   # 경도 · 위도 범위 — 좌표가 이 밖이면 버린다(대부도 포함)
 
@@ -100,7 +103,7 @@ def find_source(arg: str = None) -> Path:
         if not p.exists():
             sys.exit(f"상가정보 파일이 없다: {p}")
         return p
-    hits = sorted(p for d in SEARCH_DIRS for p in d.glob(SRC_GLOB))
+    hits = sorted((p for d in SEARCH_DIRS for p in d.glob(SRC_GLOB)), key=lambda p: p.name)   # ..._경기_YYYYMM.csv
     if not hits:
         sys.exit("상가정보(경기) 파일을 못 찾았다 — 공공데이터포털 '소상공인시장진흥공단_상가(상권)정보'를 내려받아 "
                  "--src 로 경기 파일을 넘긴다")

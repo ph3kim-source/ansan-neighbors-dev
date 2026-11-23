@@ -146,6 +146,7 @@ export function openShop(s) {
     <div class="fine">
       ${cuisine ? `<p>${esc(t('shop.cuisineNote'))}</p>` : ''}
       ${basis ? `<p>${esc(basis)}</p>` : ''}
+      ${s.kind === 'official' && s.basis ? `<p>${esc(t('shop.officialSrc', { src: s.basis }))}</p>` : ''}
       ${!community && s.kind !== 'official' && !s.checked ? `<p>${esc(t('shop.source', { date: S.shops.date }))}</p>` : ''}
     </div>
     <div class="wrong-box" hidden>

@@ -166,6 +166,7 @@ FETCH_SHIM = """
 (function () {
   if (typeof ANSAN_DEMO === 'undefined') return;
   var D = ANSAN_DEMO;
+  window.ANSAN_SINGLE_FILE = true;   // 파일 하나 판 — 서비스 워커(sw.js)가 없다. 웹 주소(GitHub Pages)로 열어도 등록하지 않게(main.js)
   var realFetch = window.fetch ? window.fetch.bind(window) : null;
   window.fetch = function (input, init) {
     init = init || {};
@@ -251,6 +252,7 @@ def build_proposal(api_data: dict) -> str:
         "__MONTH__": f"{C.LATEST_MONTH[:4]}년 {int(C.LATEST_MONTH[4:6])}월",
         "__BUILT__": api_data["built"][:10],
         "__APP_FILE__": OUT.name,
+        "__ICON__": _png_data_url(APP_DIR / "icons" / "icon-192.png"),   # 탭 아이콘을 파일 안에 — 웹 주소로 열 때 /favicon.ico 404 가 안 나게
     }
     html = (SRC / "proposal.html").read_text(encoding="utf-8")
     for key, val in fill.items():

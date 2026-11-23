@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>안산 이웃 · 시연판</title>
+<meta name="description" content="안산 외국인 주민을 위한 동네 앱 — 고향 가게 지도 · 공공 기관 · 언어방 · 안산시 소식 (시연판, 안산시 공식 서비스가 아닙니다)">
+<meta name="theme-color" content="#0b7a66">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<!-- 2안 공유판 첫 화면 — pipeline/build_share.py 가 pipeline/html/site.html 로 만든다. 시민 앱(app/)과 제안 요약(summary/)으로 잇는 안내 페이지 -->
+<style>
+:root {
+  --page: #f3f1ec; --surface: #ffffff; --surface-2: #f8f7f3; --ink: #13201c; --ink-2: #3f4d49; --muted: #66746f;
+  --line: #e4e1da; --brand: #0b7a66; --brand-2: #08604f; --brand-ink: #ffffff; --brand-soft: #dff1eb;
+  --warn-soft: #fff2d6; --warn-ink: #7a4b00; --shadow: 0 1px 2px rgba(16,32,28,.06), 0 10px 30px rgba(16,32,28,.08);
+  --font: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #070c0b; --surface: #111a17; --surface-2: #16211e; --ink: #e4ece9; --ink-2: #b6c3be; --muted: #8b9a95;
+    --line: #24312d; --brand: #3dbda3; --brand-2: #63d1ba; --brand-ink: #04211b; --brand-soft: #143128;
+    --warn-soft: #3a2c10; --warn-ink: #f4c46a; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #070c0b; --surface: #111a17; --surface-2: #16211e; --ink: #e4ece9; --ink-2: #b6c3be; --muted: #8b9a95;
+  --line: #24312d; --brand: #3dbda3; --brand-2: #63d1ba; --brand-ink: #04211b; --brand-soft: #143128;
+  --warn-soft: #3a2c10; --warn-ink: #f4c46a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 var(--font); word-break: keep-all; overflow-wrap: anywhere; }
+a { color: var(--brand); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+.mark { width: 36px; height: 36px; border-radius: 11px; background: var(--brand); color: #fff; display: grid; place-items: center; flex: none; }
+.mark svg { width: 24px; height: 24px; }
+header.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; align-items: center; gap: 10px; min-height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; color: var(--ink); text-decoration: none; }
+.pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--warn-soft); color: var(--warn-ink); white-space: nowrap; }
+nav.links { margin-left: auto; display: flex; gap: 4px; }
+nav.links a { color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 600; padding: 8px 10px; border-radius: 10px; white-space: nowrap; }
+nav.links a:hover { background: var(--surface); }
+@media (max-width: 640px) { nav.links .hide-sm { display: none; } }
+
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 32px; padding-top: 40px; padding-bottom: 48px; align-items: center; }
+@media (min-width: 960px) { .hero .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); padding-top: 56px; } }
+.eyebrow { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 700; color: var(--brand-2); background: var(--brand-soft); padding: 5px 12px; border-radius: 999px; }
+h1 { font-size: clamp(30px, 5.2vw, 46px); line-height: 1.2; letter-spacing: -.02em; margin: 16px 0 14px; }
+.lead { font-size: 18px; color: var(--ink-2); margin: 0 0 26px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 22px; border-radius: 14px; font: 700 17px/1 var(--font); text-decoration: none; border: 1px solid transparent; cursor: pointer; }
+.btn.primary { background: var(--brand); color: var(--brand-ink); box-shadow: var(--shadow); }
+.btn.primary:hover { background: var(--brand-2); }
+.btn.ghost { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.langs { margin-top: 18px; color: var(--muted); font-size: 14px; }
+.qr-box { margin-top: 22px; display: none; align-items: center; gap: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; max-width: 420px; }
+@media (min-width: 720px) { .qr-box { display: flex; } }
+.qr { width: 112px; height: 112px; flex: none; background: #fff; border-radius: 10px; padding: 6px; display: grid; place-items: center; }
+.qr svg { width: 100%; height: 100%; }
+.qr-box p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.qr-box b { display: block; font-size: 15px; color: var(--ink); margin-bottom: 2px; }
+.qr-box code { font-size: 12px; word-break: break-all; color: var(--muted); }
+
+.phone-col { display: none; }
+@media (min-width: 960px) { .phone-col { display: block; } }
+@media (max-width: 959px) { .hero .wrap { padding-bottom: 20px; } }
+.phone { position: relative; margin: 0 auto; width: 340px; height: 700px; border-radius: 46px; background: #0d1412; padding: 22px 12px 14px; box-shadow: 0 30px 60px rgba(16,32,28,.25); }
+.phone::before { content: ""; position: absolute; top: 8px; left: 50%; width: 64px; height: 6px; margin-left: -32px; border-radius: 4px; background: #2b3532; }
+.phone iframe { width: 100%; height: 100%; border: 0; border-radius: 30px; background: #f6f5f1; display: block; }
+.phone-cap { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
+
+section { padding: 44px 0; }
+section h2 { font-size: 26px; letter-spacing: -.01em; margin: 0 0 6px; }
+section .sub { color: var(--muted); margin: 0 0 22px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+@media (min-width: 1000px) { .grid.five { grid-template-columns: repeat(5, minmax(0, 1fr)); } }   /* 다섯 칸을 한 줄로 — 4 + 1 로 남지 않게 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+.card h3 { margin: 10px 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.ic { width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); color: var(--brand-2); display: grid; place-items: center; }
+.ic svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.split { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 820px) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.card.wide p + p { margin-top: 8px; }
+.card .go { display: inline-flex; margin-top: 14px; font-weight: 700; text-decoration: none; }
+ul.src { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; }
+ul.src li { margin: 4px 0; }
+.note { background: var(--warn-soft); color: var(--warn-ink); border-radius: 14px; padding: 12px 16px; font-size: 14px; }
+footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+footer a { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 32 32"><path d="M6 15.5 16 7l10 8.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="11.5" cy="19.5" r="3" fill="currentColor"/><circle cx="20.5" cy="19.5" r="3" fill="currentColor"/><path d="M7 27c.8-2.6 2.5-4 4.5-4s3.7 1.4 4.5 4m0 0c.8-2.6 2.5-4 4.5-4s3.7 1.4 4.5 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark"><svg><use href="#logo"/></svg></span>안산 이웃</a>
+    <span class="pill">시연판</span>
+    <nav class="links">
+      <a href="app/">주민 앱</a>
+      <a class="hide-sm" href="#official">담당자 화면</a>
+      <a class="hide-sm" href="summary/">제안 요약</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow">안산 외국인 주민 동네 앱</span>
+      <h1>고향 가게부터 시 소식까지,<br>안산 이웃 한 곳에서</h1>
+      <p class="lead">지도에서 고향 음식점 · 식료품점과 출입국 · 고용센터 같은 공공 기관을 찾고, 같은 나라 이웃과 언어방에서 이야기하고, 안산시 소식을 내 언어로 받아요.</p>
+      <div class="cta">
+        <a class="btn primary" href="app/">앱 열기 →</a>
+        <a class="btn ghost" href="summary/">제안 요약 보기</a>
+      </div>
+      <p class="langs">한국어 · English · 中文 · Русский · Tiếng Việt — 가입 없이 시연 계정으로 바로 둘러볼 수 있어요</p>
+      <div class="qr-box" id="qrbox">
+        <div class="qr" id="qr" aria-hidden="true"></div>
+        <p><b>휴대폰으로 열기</b>카메라로 찍으면 앱이 열려요. 홈 화면에 추가하면 앱처럼 쓸 수 있어요.<br><code id="qrurl"></code></p>
+      </div>
+    </div>
+    <div class="phone-col">
+      <div class="phone"><iframe src="app/" title="안산 이웃 앱 미리보기" loading="lazy"></iframe></div>
+      <p class="phone-cap">화면 안을 눌러 직접 써 볼 수 있어요</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>주민이 쓰는 화면</h2>
+    <p class="sub">휴대폰 아래 다섯 칸 — 숫자 · 순위 같은 통계 대신 바로 쓸 수 있는 것만 보여요</p>
+    <div class="grid five">
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></svg></div><h3>홈</h3><p>시간대 인사, 나에게 맞춤 행사 카드, 자주 쓰는 곳 바로가기</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M9 4 3.5 6.3v13.5L9 17.5l6 2.5 5.5-2.3V4.2L15 6.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg></div><h3>지도</h3><p>고향 가게 __SHOPS_N__곳 · 공공 기관 __FAC_N__곳, 그리고 시간대별 '고향 사람 많은 곳'</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9.5L5 19.5V16H4z"/><path d="M8 9.5h8M8 12.5h5"/></svg></div><h3>커뮤니티</h3><p>나라별 언어방과 내국인 이웃도 함께 쓰는 교류방. 신고가 쌓인 글은 숨겨져요</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3.5 10v4h3.5l7.5 4.5v-13L7 10z"/><path d="M17.5 9a4.2 4.2 0 0 1 0 6"/></svg></div><h3>소식</h3><p>안산시 공지와 행사(내 동네 · 내 나라 맞춤), 그리고 시에 직접 묻기</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg></div><h3>나</h3><p>화면 언어 · 사는 동네 바꾸기, 알림 고르기. 이름 · 연락처는 받지 않아요</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="official">
+  <div class="wrap">
+    <h2>안산시 담당자 화면</h2>
+    <p class="sub">주민 앱과 같은 커뮤니티 자료를 보는 운영 콘솔</p>
+    <div class="split">
+      <div class="card wide">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></div>
+        <h3>운영 콘솔</h3>
+        <p>생활권 동향 · 행사 기획과 효과 · 외국인 변화 · 공지와 소통(공지 올리기, 질문에 답하기, 신고 글 · 가게 정보 제보 처리) 네 화면.</p>
+        <p>담당자가 올린 공지가 주민 앱 소식에 뜨고, 주민의 질문 · 신고가 콘솔에 쌓이는 흐름은 시연 때 서버 판으로 보여 드려요.</p>
+        __CONSOLE_LINK__
+      </div>
+      <div class="card wide">
+        <div class="ic"><svg viewBox="0 0 24 24"><path d="M6 3.5h9l3.5 3.5v13.5H6z"/><path d="M14.5 3.5V7.5h4M9 12h6M9 15.5h6"/></svg></div>
+        <h3>제안 요약</h3>
+        <p>이 서비스가 왜 필요한지, 어떤 자료를 어떻게 쓰는지, 단계별 계획을 한 장으로 정리했어요(심사 · 담당자용).</p>
+        <a class="go" href="summary/">제안 요약 열기 →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>쓴 자료</h2>
+    <p class="sub">실제 공공 자료와 시연용 예시를 나눠 적었어요</p>
+    <div class="split">
+      <div class="card wide">
+        <h3>실제 공공 자료</h3>
+        <ul class="src">
+          <li>가게: 소상공인시장진흥공단 상가(상권)정보 (__SHOPS_YM__) — 안산 식품 영업 신고 대장(__CHECKED__)으로 영업 중인 곳만</li>
+          <li>공공 기관: 법무부 출입국 관리사무소 현황 · 고용노동부 고용복지플러스센터 현황 · 한국건강가정진흥원 다문화가족지원센터 현황 · 건강보험심사평가원 병의원 현황</li>
+          <li>지도: © OpenStreetMap contributors · 동 경계: 통계청 SGIS</li>
+        </ul>
+      </div>
+      <div class="card wide">
+        <h3>시연용 예시</h3>
+        <ul class="src">
+          <li>커뮤니티 글 · 댓글, 행사 · 공지, 시에 묻기 답변</li>
+          <li>'고향 사람 많은 곳' — 실제 서비스에서는 통신 자료를 동네별 1~4 단계로만 보여 줘요(사람 수는 보이지 않음)</li>
+        </ul>
+        <p class="note" style="margin-top:12px">이 시연판에서 쓴 글 · 제보는 내 브라우저 안에만 있고 다른 사람에게 보이지 않아요. 새로고침하면 처음 상태로 돌아가요.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>안산 이웃 — 외국인 주민 커뮤니티 × 생활 지도 아이디어의 시연판입니다. 안산시 공식 서비스가 아닙니다.</span>
+    <a href="summary/">제안 요약</a>
+    <a href="__REPO_URL__">GitHub</a>
+    <span>__BUILT__ 만듦</span>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+(function () {
+  var url = new URL('app/', location.href).href;
+  var box = document.getElementById('qrbox');
+  document.getElementById('qrurl').textContent = url;
+  try {
+    if (location.protocol === 'file:' || typeof qrcode !== 'function') throw new Error('no qr');
+    var q = qrcode(0, 'M'); q.addData(url); q.make();
+    document.getElementById('qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  } catch (e) {
+    box.style.display = 'none';   // 파일로 열었거나 QR 스크립트를 못 받으면 주소 안내를 숨긴다
+  }
+})();
+</script>
+</body>
+</html>
