@@ -4,8 +4,13 @@
 
 - 총량: 안산시 공표 통계(2안/data/processed)의 동별 외국인주민·구×국적 인원에 맞춘다.
 - 동×국적 분배: 공표 통계에 없으므로 시나리오(AFFINITY)를 시드로 IPF 보정 → '가정'.
-- 출력: data/synthetic/ — 실데이터 수급 시 이 폴더의 파일만 교체하면 앱이 그대로 동작한다.
-- 인코딩: 실데이터와 같은 CP949.
+- 출력: data/synthetic/ — 앱은 같은 파일 이름 틀을 data/real(실데이터 판)에서도 읽는다.
+- 인코딩: CP949 (실물 2026 파일은 UTF-8 — 앱이 판별해서 읽는다).
+
+v0.3 (2026-11-18) — 실물 규격에 맞춤: 실제 21개국 범주, DS-076 · 077 은 PUBLIC 판 이름 · 해외(99999) 출발 없음,
+DS-014(T22) 추가. 앱이 더 쓰지 않는 DS-028 · DS-042 · DS-061 은 만들지 않는다.
+가상 시나리오(가정): 한국 공휴일에 근로자가 많은 국적이 원곡동 · 중앙동에 낮 동안 더 모이고, 시연 행사일에는 대상 국적이
+행사 동에 더 모인다 — 배수는 임의값이며 실데이터에서 잰 값이 아니다.
 """
 import calendar
 import datetime as dt
@@ -15,10 +20,10 @@ import numpy as np
 import pandas as pd
 import shapely
 
-from config import (ANCHOR_DONG_CSV, ANCHOR_GU_NAT_CSV, ANCHOR_NAT_MAP, CACHE_DIR,
-                    CARD_INDUSTRIES, CSV_ENCODING, DONG_MASTER_CSV, DONGS, EVENTS,
-                    KOREAN_NT_CODE, LATEST_MONTH, MONTHS, NAT_CODE, NAT_NAMES, SEED,
-                    SGG_NAMES, SYNTHETIC_DIR, TELECOM_SAMPLE_RATE)
+from config import (ANCHOR_DONG_CSV, ANCHOR_GU_NAT_CSV, ANCHOR_NAT_MAP, CARD_INDUSTRIES, CSV_ENCODING,
+                    DONG_MASTER_CSV, DONGS, EVENTS, GRID_HOURS, IS_REAL, KOREAN_NT_CODE, KR_HOLIDAYS, LATEST_MONTH,
+                    MONTHS, NAT_CODE, NAT_NAMES, SEED, SGG_NAMES, SYNTHETIC_CACHE_DIR, SYNTHETIC_DIR,
+                    TELECOM_SAMPLE_RATE)
 from geo import load_dong_features, utmk_to_wgs84, wgs84_to_utmk
 
 RNG = np.random.default_rng(SEED)
@@ -29,7 +34,9 @@ NAT_ARR = np.array(NAT_NAMES)
 N_D, N_N = len(DONGS), len(NAT_NAMES)
 D_IDX = {name: i for i, name in enumerate(DONG_NAMES)}
 N_IDX = {name: i for i, name in enumerate(NAT_NAMES)}
-RU_NATS = ["우즈베키스탄", "러시아", "카자흐스탄", "키르기스스탄", "우크라이나"]
+RU_NATS = ["우즈베키스탄", "러시아", "카자흐스탄"]
+# 고용허가제 송출국 중심(공개 정보) — 가상 '연휴 결집' 시나리오에 쓴다
+WORKER_NATS = ["인도네시아", "네팔", "방글라데시", "스리랑카", "캄보디아", "미얀마", "파키스탄", "태국", "필리핀", "베트남"]
 
 # 동×국적 분배 시나리오 (가정) — 값이 클수록 그 동에 더 몰려 산다
 AFFINITY = {
@@ -158,34 +165,22 @@ def attraction(sample_people: np.ndarray, master: pd.DataFrame):
     return np.stack([home, work, leisure])
 
 
-# ------------------------------------------------------------------ DS-028
-def gen_ds028(people: dict) -> int:
-    total = 0
-    for month in MONTHS:
-        days = _month_days(month)
-        sample = people[month] * TELECOM_SAMPLE_RATE * RNG.lognormal(0, 0.06, (N_D, N_N))
-        rows = []
-        for d in range(N_D):
-            for n in range(N_N):
-                r = sample[d, n]
-                if r < 0.05:
-                    continue
-                long_parts = [(days, 0.68), (int(RNG.integers(20, days)), 0.17),
-                              (int(RNG.integers(10, 20)), 0.09), (int(RNG.integers(1, 10)), 0.06)]
-                for nights, frac in long_parts:
-                    rows.append((DONG_CODES[d], 1, NAT_NAMES[n], nights, r * frac * RNG.lognormal(0, 0.05)))
-                for nights, frac in ((1, 0.6), (2, 0.25), (3, 0.15)):
-                    rows.append((DONG_CODES[d], 2, NAT_NAMES[n], nights, r * 0.04 * frac))
-        df = pd.DataFrame(rows, columns=["ADM_CD", "IN_FORN_DIV_NM", "CNTRY_NM", "LDGMT_DD", "POP"])
-        df = df[df["POP"] >= 0.01]
-        df.insert(0, "ETL_YM", month)
-        df.insert(1, "SGG_CD", df["ADM_CD"].str[:5])
-        df["POP"] = df["POP"].round(2)
-        total += _write(df, f"T37_AMD_STAY_F_POP_{month}_4127.csv")
-    return total
-
-
 # ------------------------------------------------------------------ DS-017
+def _day_boost(ymd: str) -> np.ndarray:
+    """가상 시나리오 배수 [24 × 동 × 국적] — 공휴일 근로자 결집 · 시연 행사일 대상 국적 결집 (임의값)."""
+    boost = np.ones((24, N_D, N_N))
+    if ymd in KR_HOLIDAYS:
+        k = 3.0 if KR_HOLIDAYS[ymd].startswith("설") else 1.6
+        for nat in WORKER_NATS:
+            boost[10:22, D_IDX["원곡동"], N_IDX[nat]] *= k
+            boost[10:22, D_IDX["중앙동"], N_IDX[nat]] *= 1 + (k - 1) / 3
+    for ev in EVENTS:
+        if ymd in ev["days"]:
+            for nat in ev["target"]:
+                boost[10:20, D_IDX[ev["dong"]], N_IDX[nat]] *= 2.5
+    return boost
+
+
 def gen_ds017(people: dict, master: pd.DataFrame) -> int:
     total = 0
     for month in MONTHS:
@@ -199,11 +194,11 @@ def gen_ds017(people: dict, master: pd.DataFrame) -> int:
             weekend = date.weekday() >= 5
             prof = PROFILES[weekend]
             expected = np.einsum("hk,kdn->hdn", prof, mats) * nat_total[None, None, :] * PRESENCE[weekend]
-            long_pop = (expected * RNG.lognormal(0, 0.08, (1, N_D, N_N))
+            ymd = date.strftime("%Y%m%d")
+            long_pop = (expected * _day_boost(ymd) * RNG.lognormal(0, 0.08, (1, N_D, N_N))
                         * RNG.lognormal(0, 0.05, (24, N_D, N_N)))
             short_pop = ((0.2 + prof[:, 2])[:, None, None] * mats[2][None, :, :]
                          * (nat_total * 0.03)[None, None, :] * RNG.lognormal(0, 0.15, (24, N_D, N_N)))
-            ymd = date.strftime("%Y%m%d")
             for div, arr in ((1, long_pop), (2, short_pop)):
                 h_idx, d_idx, n_idx = np.nonzero(arr >= 1.0)
                 frames.append(pd.DataFrame({
@@ -217,8 +212,7 @@ def gen_ds017(people: dict, master: pd.DataFrame) -> int:
 # ------------------------------------------------------------------ DS-056
 NAT_SPEND_BOOST = {
     "우즈베키스탄": {"F01005": 3.0, "D01001": 2.5}, "러시아": {"F01005": 2.0, "D01001": 2.0},
-    "카자흐스탄": {"F01005": 2.5, "D01001": 2.2}, "키르기스스탄": {"F01005": 2.5, "D01001": 2.2},
-    "우크라이나": {"D01001": 1.8}, "베트남": {"F01005": 2.5, "D01001": 2.0, "E02001": 1.8},
+    "카자흐스탄": {"F01005": 2.5, "D01001": 2.2}, "베트남": {"F01005": 2.5, "D01001": 2.0, "E02001": 1.8},
     "중국": {"F01002": 3.0, "D01001": 1.6, "E01001": 1.3},
     "네팔": {"D01001": 2.8, "F01005": 2.0, "E01001": 1.6}, "방글라데시": {"D01001": 2.8, "E01001": 1.6},
     "파키스탄": {"D01001": 2.8}, "인도네시아": {"D01001": 2.5, "F01005": 2.0}, "스리랑카": {"D01001": 2.2},
@@ -325,8 +319,9 @@ def gen_ds032(people: dict, master: pd.DataFrame) -> int:
     top_nats = [NAT_NAMES[i] for i in np.argsort(-nat_total) if NAT_NAMES[i] != "기타"][:8]
     sex_age = np.concatenate([0.62 * AGE_W, 0.38 * AGE_W])
     frames = []
+    # v0.4: 실물처럼 FORN_GB = 국적 이름, 시각 = 앱의 격자 시각(GRID_HOURS) — 앱은 평일/주말 하루 평균 집계본만 읽는다
     for ymd, weekend in (("20260610", False), ("20260613", True)):
-        for hour in (14, 21):
+        for hour in GRID_HOURS:
             prof = PROFILES[weekend][hour]
             dong_exp = np.einsum("k,kdn->dn", prof, mats) * nat_total[None, :] * PRESENCE[weekend]
             for nat in top_nats:
@@ -344,7 +339,7 @@ def gen_ds032(people: dict, master: pd.DataFrame) -> int:
                 df.insert(3, "UTMK_X", gx[order].astype(int))
                 df.insert(4, "UTMK_Y", gy[order].astype(int))
                 df.insert(5, "TIME_CD", hour)
-                df.insert(6, "FORN_GB", NAT_CODE[nat])
+                df.insert(6, "FORN_GB", nat)
                 df.insert(7, "S99", np.round(value[order] * 0.04, 2))
                 df["ETL_YMD"] = ymd
                 frames.append(df)
@@ -352,9 +347,10 @@ def gen_ds032(people: dict, master: pd.DataFrame) -> int:
 
 
 # ------------------------------------------------------------------ DS-076 / DS-077
-REGIONS = [("11", "11530", 0.08), ("11", "11560", 0.06), ("41", "41390", 0.16), ("41", "41590", 0.10),
-           ("41", "41111", 0.05), ("41", "41220", 0.04), ("28", "28200", 0.06), ("41", "41271", 0.20),
-           ("41", "41273", 0.20), ("99", "99999", 0.05)]
+# 실물 DS-076 · 077 출발 · 도착은 서울(11) · 인천(28) · 경기(41)뿐 — 해외 · 정보없음(99999)은 없다
+REGIONS = [("11", "11530", 0.08), ("11", "11560", 0.06), ("41", "41390", 0.18), ("41", "41590", 0.11),
+           ("41", "41111", 0.05), ("41", "41220", 0.05), ("28", "28200", 0.07), ("41", "41271", 0.20),
+           ("41", "41273", 0.20)]
 MIG_TAIL = (["AVG_INC_%d" % i for i in range(1, 11)] + ["AVG_CARD", "LOAN_CNT", "AVG_LOAN"]
             + ["CNT_%d" % i for i in range(1, 11)])
 
@@ -374,12 +370,12 @@ def _profile_cols(tot: int, for_cnt: int) -> dict:
 
 
 def gen_ds076_077() -> tuple:
+    """PUBLIC(K-10) 판 이름으로 낸다 — 앱은 PUBLIC 만 읽는다 (원본 · PUBLIC 을 같이 읽으면 이중 집계)."""
     dong = pd.read_csv(ANCHOR_DONG_CSV)
     totals = [0, 0]
     for month in MONTHS:
         ym = f"{month[:4]}-{month[4:]}"
         dm = dong[dong["ym"] == ym].set_index("dong")
-        spring = 1.4 if month[4:] in ("03", "04", "05") else 1.0
         rows_in, rows_out = [], []
         for code, name in zip(DONG_CODES, DONG_NAMES):
             pop = float(dm.loc[name, "pop_total"])
@@ -390,11 +386,7 @@ def gen_ds076_077() -> tuple:
                     if sgg == code[:5] and RNG.random() < 0.5:
                         continue
                     tot = int(round(movers * w * RNG.lognormal(0, 0.2)))
-                    if sgg == "99999":
-                        tot = int(round(tot * (spring if kind == "in" else 1.0)))
-                        for_cnt = int(round(tot * RNG.uniform(0.65, 0.85)))
-                    else:
-                        for_cnt = int(round(tot * f_share * 0.45 * RNG.lognormal(0, 0.15)))
+                    for_cnt = int(round(tot * f_share * 0.45 * RNG.lognormal(0, 0.15)))
                     if tot < 1:
                         continue
                     key = {"BF_YR_MON": _shift_month(month, -12), "BF_SIDO": sido, "BF_SIGNGU": sgg,
@@ -403,84 +395,88 @@ def gen_ds076_077() -> tuple:
                            "AF_YR_MON": month, "AF_SIDO": sido, "AF_SIGNGU": sgg}
                     key.update(_profile_cols(tot, min(for_cnt, tot)))
                     rows.append(key)
-        totals[0] += _write(pd.DataFrame(rows_in), f"GYEONGGI_IN_STAT_{month}.csv")
-        totals[1] += _write(pd.DataFrame(rows_out), f"GYEONGGI_OUT_STAT_{month}.csv")
+        totals[0] += _write(pd.DataFrame(rows_in), f"GYEONGGI_IN_STAT_PUBLIC_{month}.csv")
+        totals[1] += _write(pd.DataFrame(rows_out), f"GYEONGGI_OUT_STAT_PUBLIC_{month}.csv")
     return tuple(totals)
 
 
-# ------------------------------------------------------------------ DS-042 / DS-061 (행사)
-def _baseline_days(day: str) -> list:
-    base = dt.datetime.strptime(day, "%Y%m%d").date()
-    return [(base - dt.timedelta(days=k)).strftime("%Y%m%d") for k in (7, 14)]
+# ------------------------------------------------------------------ DS-014 (동 유동인구 · 내외국인 · 성·연령)
+DS014_AGES = [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70]
+DS014_COLS = (["ADMI_CD", "CTY_NM", "ADMI_NM", "TIME_CD", "FORN_GB"] + [f"M_{a}_CNT" for a in DS014_AGES]
+              + [f"F_{a}_CNT" for a in DS014_AGES] + ["ETL_YMD"])
+DS014_DAYS = 7      # 달마다 첫 7일만 낸다 (용량) — 앱은 하루 평균으로 쓰므로 결과 모양은 같다
+FOREIGN_AGE_W = np.array([0.02, 0.03, 0.12, 0.17, 0.16, 0.13, 0.11, 0.09, 0.07, 0.05, 0.03, 0.01, 0.01])
+KOREAN_AGE_W = np.array([0.06, 0.06, 0.07, 0.07, 0.07, 0.08, 0.09, 0.09, 0.09, 0.09, 0.08, 0.07, 0.08])
 
 
-def gen_events(people: dict, master: pd.DataFrame) -> tuple:
+def gen_ds014(people: dict, master: pd.DataFrame) -> int:
     dong = pd.read_csv(ANCHOR_DONG_CSV)
-    food_codes = ["F01001", "F01002", "F01005", "F02001", "D01001", "D01002", "D01004"]
-    meta = {c[0]: c for c in CARD_INDUSTRIES}
-    visit_rows, sales_rows = [], []
-    for ev in EVENTS:
-        d = D_IDX[ev["dong"]]
-        code = DONG_CODES[d]
-        month = ev["days"][0][:6]
-        mats = attraction(people[month] * TELECOM_SAMPLE_RATE, master)
-        nat_total = (people[month] * TELECOM_SAMPLE_RATE).sum(axis=0)
-        base_nat = nat_total * mats[2][d] * 0.6
+    f_sexage = np.concatenate([0.61 * FOREIGN_AGE_W, 0.39 * FOREIGN_AGE_W])
+    f_sexage /= f_sexage.sum()
+    k_sexage = np.concatenate([0.5 * KOREAN_AGE_W, 0.5 * KOREAN_AGE_W])
+    k_sexage /= k_sexage.sum()
+    work_w = master["MANUF_WORKERS"].to_numpy(float) + 300.0
+    work_w /= work_w.sum()
+    total = 0
+    for month in MONTHS:
+        y, m = int(month[:4]), int(month[4:])
+        sample = people[month] * TELECOM_SAMPLE_RATE
+        nat_total = sample.sum(axis=0)
+        mats = attraction(sample, master)
         ym = f"{month[:4]}-{month[4:]}"
-        base_kor = float(dong[(dong["ym"] == ym) & (dong["dong"] == ev["dong"])]["pop_kor"].iloc[0]) * 0.35
-        days = sorted(set(ev["days"] + sum((_baseline_days(x) for x in ev["days"]), [])))
-        for day in days:
-            on = day in ev["days"]
-            common = {"CTY_CD": code[:5], "CTY_NM": SGG_NAMES[code[:5]], "ADMI_CD": code,
-                      "ADMI_NM": ev["dong"], "AREA_CD": ev["area_cd"], "AREA_NM": ev["name"]}
-            kor = base_kor * (1.8 if on else 1.0) * RNG.lognormal(0, 0.08)
-            visit_rows.append({**common, "FORN_GB": "N", "CNT": int(round(kor)), "ETL_YMD": day})
-            for n, nat in enumerate(NAT_NAMES):
-                lift = (RNG.uniform(3.5, 5.0) if nat in ev["target"] else 1.6) if on else 1.0
-                cnt = base_nat[n] * lift * RNG.lognormal(0, 0.12)
-                if cnt >= 1:
-                    visit_rows.append({**common, "FORN_GB": NAT_CODE[nat], "CNT": int(round(cnt)), "ETL_YMD": day})
-            foreign_base = base_nat.sum()
-            for ind in food_codes:
-                w = BASE_IND_W[ind]
-                for nat_cd, base, lift in (("N", base_kor * 0.15, 1.4),
-                                           ("F", foreign_base * 0.12, 3.2 if ind in ETHNIC_IND else 2.2)):
-                    cnt = int(RNG.poisson(base * w / 8 * (lift if on else 1.0)))
-                    if cnt < 1:
-                        continue
-                    sales_rows.append({**common, "card_tpbuz_cd": ind, "card_tpbuz_nm_1": meta[ind][1],
-                                       "card_tpbuz_nm_2": meta[ind][2], "card_tpbuz_nm_3": meta[ind][3],
-                                       "NAT_CD": nat_cd, "CNT": cnt,
-                                       "AMT": int(round(cnt * meta[ind][4] * RNG.lognormal(0, 0.15), -1)),
-                                       "ETL_YMD": day})
-    return (_write(pd.DataFrame(visit_rows), "EVENT_VISIT_NATIONALITY_2026H1.csv"),
-            _write(pd.DataFrame(sales_rows), "EVENT_SALES_NATIONALITY_2026H1.csv"))
+        kor = dong[dong["ym"] == ym].set_index("dong")["pop_kor"].reindex(DONG_NAMES).fillna(0).to_numpy(float)
+        kor_home = kor * TELECOM_SAMPLE_RATE
+        frames = []
+        for day in range(1, DS014_DAYS + 1):
+            date = dt.date(y, m, day)
+            weekend = date.weekday() >= 5
+            prof = PROFILES[weekend]
+            ymd = date.strftime("%Y%m%d")
+            foreign = (np.einsum("hk,kdn->hdn", prof, mats) * nat_total[None, None, :] * _day_boost(ymd)).sum(axis=2)
+            korean = (prof[:, :1] * kor_home[None, :] + prof[:, 1:2] * kor_home.sum() * work_w[None, :]
+                      + prof[:, 2:3] * kor_home[None, :])
+            for gb, arr, w in (("F", foreign, f_sexage), ("N", korean, k_sexage)):
+                vals = arr[:, :, None] * w[None, None, :] * RNG.lognormal(0, 0.08, (24, N_D, 26))
+                h_idx, d_idx = np.meshgrid(np.arange(24), np.arange(N_D), indexing="ij")
+                df = pd.DataFrame(np.round(vals.reshape(-1, 26), 2), columns=DS014_COLS[5:31])
+                codes = DONG_CODES[d_idx.ravel()]
+                df.insert(0, "ADMI_CD", codes)
+                df.insert(1, "CTY_NM", [SGG_NAMES[c[:5]] for c in codes])
+                df.insert(2, "ADMI_NM", [DONG_NAMES[i] for i in d_idx.ravel()])
+                df.insert(3, "TIME_CD", [f"{h:02d}" for h in h_idx.ravel()])
+                df.insert(4, "FORN_GB", gb)
+                df["ETL_YMD"] = ymd
+                frames.append(df)
+        total += _write(pd.concat(frames, ignore_index=True)[DS014_COLS], f"T22_GG_ADMI_FLOWPOP_{month}_4127.csv")
+    return total
 
 
 # ------------------------------------------------------------------ main
 def main() -> None:
+    if IS_REAL:
+        raise SystemExit("ANSAN_DATA=real 로는 가상 데이터를 만들지 않습니다 — 환경변수를 지우고 실행하세요")
     SYNTHETIC_DIR.mkdir(parents=True, exist_ok=True)
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    for old in list(SYNTHETIC_DIR.glob("*.csv")) + list(CACHE_DIR.glob("*.csv")):
+    SYNTHETIC_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for old in list(SYNTHETIC_DIR.glob("*.csv")) + list(SYNTHETIC_CACHE_DIR.glob("*.csv")):
         old.unlink()
     master = build_dong_master()
     people = calibrated_people()
     manifest = [
-        ("DS-028", "AMD_STAY_F_POP", "T37_AMD_STAY_F_POP_YYYYMM_4127.csv", gen_ds028(people)),
         ("DS-017", "AMD_INFLOW_TIME_F_POP", "T38_AMD_INFLOW_TIME_F_POP_YYYYMM_4127.csv", gen_ds017(people, master)),
+        ("DS-014", "GG_ADMI_FLOWPOP", "T22_GG_ADMI_FLOWPOP_YYYYMM_4127.csv", gen_ds014(people, master)),
         ("DS-056", "GGC_SALES_YM_AMD", "GGC_SALES_YM_AMD_YYYYMM.csv", gen_ds056(people, master)),
         ("DS-032", "GG_50CELL_FLOWPOP", f"T1_GG_50CELL_FLOWPOP_{LATEST_MONTH}_4127.csv", gen_ds032(people, master)),
     ]
     n_in, n_out = gen_ds076_077()
-    manifest += [("DS-076", "GYEONGGI_IN_STAT", "GYEONGGI_IN_STAT_YYYYMM.csv", n_in),
-                 ("DS-077", "GYEONGGI_OUT_STAT", "GYEONGGI_OUT_STAT_YYYYMM.csv", n_out)]
-    n_visit, n_sales = gen_events(people, master)
-    manifest += [("DS-042", "EVENT_VISIT_NATIONALITY", "EVENT_VISIT_NATIONALITY_2026H1.csv", n_visit),
-                 ("DS-061", "EVENT_SALES_NATIONALITY", "EVENT_SALES_NATIONALITY_2026H1.csv", n_sales)]
+    manifest += [("DS-076", "GYEONGGI_IN_STAT_PUBLIC", "GYEONGGI_IN_STAT_PUBLIC_YYYYMM.csv", n_in),
+                 ("DS-077", "GYEONGGI_OUT_STAT_PUBLIC", "GYEONGGI_OUT_STAT_PUBLIC_YYYYMM.csv", n_out)]
     out = pd.DataFrame(manifest, columns=["인벤ID", "테이블명", "파일 패턴", "행수"])
     out["비고"] = "가상 데이터 (seed=%d)" % SEED
     out.to_csv(SYNTHETIC_DIR / "MANIFEST.txt", index=False, encoding="utf-8-sig", sep="\t")
     print(out.to_string(index=False))
+    import metrics  # 공유판 · 드라이브 앱은 원본 대신 집계 캐시만 담는다 → 여기서 미리 만든다
+    metrics.ds017_profile(), metrics.ds017_daily(), metrics.ds014_month(), metrics.ds032_grid()
+    print("캐시:", ", ".join(p.name for p in sorted(SYNTHETIC_CACHE_DIR.glob("*.csv"))))
 
 
 if __name__ == "__main__":

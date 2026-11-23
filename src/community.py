@@ -10,6 +10,7 @@ import datetime as dt
 import json
 import random
 import re
+import secrets
 import sqlite3
 import threading
 from contextlib import closing
@@ -17,9 +18,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import (ANCHOR_DONG_CSV, BUSINESS_NAME_PATTERNS, DB_PATH, DONG_CODE, HOT_DAYS,
-                    HOT_MIN_LIKES, NAT_NAMES, NATIONS, PERSONAS, PLACE_VERIFY_UPVOTES,
-                    REPORT_HIDE_THRESHOLD)
+from config import (ANCHOR_DONG_CSV, BUSINESS_NAME_PATTERNS, DB_PATH, DONG_CODE, DONG_NAME, ENABLE_PHASE2,
+                    HOT_DAYS, HOT_MIN_LIKES, NAT_NAMES, NATIONS, PERSONAS, PHASE2_TAGS, PLACE_VERIFY_UPVOTES,
+                    REPORT_HIDE_THRESHOLD, ROOMS)
 from geo import dong_centroids
 
 SCHEMA = """
@@ -36,9 +37,13 @@ CREATE TABLE IF NOT EXISTS places(id INTEGER PRIMARY KEY, name TEXT, category TE
   lat REAL, source TEXT, created_by INTEGER, created_at TEXT);
 CREATE TABLE IF NOT EXISTS place_votes(place_id INTEGER, user_id INTEGER, PRIMARY KEY(place_id, user_id));
 CREATE TABLE IF NOT EXISTS notices(id INTEGER PRIMARY KEY, kind TEXT, topic TEXT, titles TEXT, bodies TEXT,
-  target TEXT, dong TEXT, start_date TEXT, link TEXT, created_at TEXT);
+  target TEXT, target_dongs TEXT, scope TEXT DEFAULT 'all', dong TEXT, start_date TEXT, link TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS questions(id INTEGER PRIMARY KEY, author_id INTEGER, language TEXT, title TEXT,
   body TEXT, body_ko TEXT, created_at TEXT, answer TEXT, answered_by INTEGER, answered_at TEXT);
+CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, user_id INTEGER, created_at TEXT);
+CREATE TABLE IF NOT EXISTS shop_votes(shop_id TEXT, user_id INTEGER, PRIMARY KEY(shop_id, user_id));
+CREATE TABLE IF NOT EXISTS shop_feedback(id INTEGER PRIMARY KEY, shop_id TEXT, user_id INTEGER, reason TEXT,
+  created_at TEXT, status TEXT DEFAULT 'open', UNIQUE(shop_id, user_id, reason));
 """
 
 
@@ -61,8 +66,17 @@ def use_db(path=None) -> None:
     _LOCAL.path = Path(path) if path else None
 
 
+_DEFAULT_PATH = None
+
+
+def set_default_db(path=None) -> None:
+    """모든 스레드의 기본 DB — 시민 앱 서버(src/server.py)는 요청마다 다른 스레드에서 돌아 use_db 대신 이것을 쓴다."""
+    global _DEFAULT_PATH
+    _DEFAULT_PATH = Path(path) if path else None
+
+
 def db_path() -> Path:
-    return getattr(_LOCAL, "path", None) or DB_PATH
+    return getattr(_LOCAL, "path", None) or _DEFAULT_PATH or DB_PATH
 
 
 def connect() -> sqlite3.Connection:
@@ -83,12 +97,43 @@ def _exec(sql: str, params=()) -> int:
         return cur.lastrowid
 
 
+# 2026-11-16 추가 칸 — 예전 DB 파일에는 ALTER TABLE 로 붙인다 (data/community.db 를 지우지 않아도 되게)
+_NOTICE_NEW_COLUMNS = {"target_dongs": "TEXT", "scope": "TEXT DEFAULT 'all'"}
+# 2026-11-20 시민 앱 — 주민이 지도에서 직접 찍은 장소만 precise=1 (시드 장소는 동 중심 근처 가상 좌표라 앱 지도에 안 그린다)
+_PLACE_NEW_COLUMNS = {"cuisine": "TEXT", "precise": "INTEGER DEFAULT 0"}
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    for table, cols in (("notices", _NOTICE_NEW_COLUMNS), ("places", _PLACE_NEW_COLUMNS)):
+        have = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+        for col, decl in cols.items():
+            if col not in have:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+
+def _insert_persona(con: sqlite3.Connection, key: str, p: dict) -> None:
+    con.execute("INSERT INTO users(persona_key, nationality, language, dong, role, is_korean, joined_at)"
+                " VALUES(?,?,?,?,?,?,?)", (key, p["nationality"], p["language"], p["dong"], p["role"],
+                                           p["is_korean"], p["joined"] + " 09:00:00"))
+
+
 def init_db(reset: bool = False) -> None:
     if reset and db_path().exists():
         db_path().unlink()
     with closing(connect()) as con:
         con.executescript(SCHEMA)
+        _migrate(con)
         empty = con.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        if not empty:  # 시연 사용자가 새로 생겼으면(예: 내국인 이웃) 예전 DB에도 넣는다
+            have = {r[0] for r in con.execute("SELECT persona_key FROM users WHERE persona_key IS NOT NULL")}
+            for key, p in PERSONAS.items():
+                if key not in have:
+                    _insert_persona(con, key, p)
+            # v0.3: 통신 21개국 범주 밖 국적(예전 시드의 우크라이나 · 키르기스스탄)은 '기타'로 — 국적 표가 바뀌어도 이어 쓰기
+            marks = ",".join("?" * len(NAT_NAMES))
+            con.execute(f"UPDATE users SET nationality='기타' WHERE nationality IS NOT NULL "
+                        f"AND nationality NOT IN ({marks})", NAT_NAMES)
+        con.commit()
     if empty:
         _seed()
 
@@ -108,7 +153,8 @@ def user_by_persona(key: str) -> dict:
 
 
 def list_posts(room: str = None, tags=None, dongs=None, include_hidden: bool = False,
-               since_days: int = None, limit: int = 60) -> list:
+               since_days: int = None, limit: int = 60, nats=None) -> list:
+    """nats — 언어방 안 '같은 나라 글만' 걸러 보기(2026-11-20 사용자 결정: 언어방은 그대로, 나라 필터를 더한다)."""
     sql = """SELECT p.*, u.nationality, u.language, u.is_korean,
              (SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) AS likes,
              (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) AS n_comments,
@@ -124,12 +170,18 @@ def list_posts(room: str = None, tags=None, dongs=None, include_hidden: bool = F
     if dongs:
         sql += " AND p.dong IN (%s)" % ",".join("?" * len(dongs))
         params += list(dongs)
+    if nats:
+        sql += " AND u.nationality IN (%s)" % ",".join("?" * len(nats))
+        params += list(nats)
     if not include_hidden:
         sql += " AND p.is_hidden=0"
+    if not ENABLE_PHASE2:  # 장터 · 사업장 후기는 2단계(v0.4 사용자 결정) — 시드 글은 DB 에 남지만 목록에 안 보인다
+        sql += " AND p.tag NOT IN (%s)" % ",".join("?" * len(PHASE2_TAGS))
+        params += list(PHASE2_TAGS)
     if since_days:
         sql += " AND p.created_at >= ?"
         params.append(_ts(_now() - dt.timedelta(days=since_days)))
-    sql += " ORDER BY p.created_at DESC LIMIT ?"
+    sql += " ORDER BY p.created_at DESC, p.id DESC LIMIT ?"     # 같은 초에 쓴 글은 나중 글이 위(HTML 판 가짜 서버와 같은 순서)
     params.append(limit)
     rows = _rows(sql, params)
     for r in rows:
@@ -144,7 +196,7 @@ def hot_posts(limit: int = 5) -> list:
 
 
 def list_comments(post_id: int, post_author: int) -> list:
-    rows = _rows("SELECT * FROM comments WHERE post_id=? ORDER BY created_at", (post_id,))
+    rows = _rows("SELECT * FROM comments WHERE post_id=? ORDER BY created_at, id", (post_id,))
     anon = {}
     for r in rows:
         if r["author_id"] == post_author:
@@ -172,6 +224,9 @@ def add_post(user: dict, room: str, tag: str, title: str, body: str, dong: str, 
 
 
 def add_comment(user: dict, post_id: int, body: str) -> int:
+    room = _rows("SELECT room FROM posts WHERE id=?", (post_id,))[0]["room"]
+    if not can_write(user, room):  # 결정 R2-11 — 언어방은 외국인 주민의 공간 (내국인은 읽기·추천·신고만)
+        raise PermissionError("내국인은 교류방에서만 글·댓글을 쓸 수 있습니다.")
     return _exec("INSERT INTO comments(post_id, author_id, body, body_ko, created_at) VALUES(?,?,?,?,?)",
                  (post_id, user["id"], body, None, _ts(_now())))
 
@@ -245,21 +300,67 @@ def list_notices(kind: str = None) -> list:
     for r in rows:
         r["titles"], r["bodies"] = json.loads(r["titles"]), json.loads(r["bodies"])
         r["target"] = json.loads(r["target"]) if r["target"] else []
+        r["target_dongs"] = json.loads(r["target_dongs"]) if r.get("target_dongs") else []
+        r["scope"] = r.get("scope") or "all"
     return rows
 
 
 def add_notice(kind: str, topic: str, titles: dict, bodies: dict, target: list, dong: str,
-               start_date: str, link: str = "") -> int:
-    return _exec("INSERT INTO notices(kind, topic, titles, bodies, target, dong, start_date, link, created_at)"
-                 " VALUES(?,?,?,?,?,?,?,?,?)",
+               start_date: str, link: str = "", target_dongs: list = None, scope: str = "all") -> int:
+    """공지·정책·행사 게시.
+
+    scope 'all'    — 모든 주민에게 보인다. target(국적)은 '내 국적 대상' 표시에만 쓴다 (시드 공지는 모두 이것).
+    scope 'target' — target 국적(있으면)과 target_dongs 거주 동(있으면)을 모두 만족하는 외국인 주민에게만 (결정 R6-21).
+    """
+    if scope not in ("all", "target"):
+        raise ValueError(f"scope 는 'all' 또는 'target' — {scope!r}")
+    if scope == "target" and not (target or target_dongs):
+        raise ValueError("대상 주민에게만 보낼 때는 대상 국적이나 대상 동을 하나 이상 골라야 합니다.")
+    return _exec("INSERT INTO notices(kind, topic, titles, bodies, target, target_dongs, scope, dong, start_date, link,"
+                 " created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                  (kind, topic, json.dumps(titles, ensure_ascii=False), json.dumps(bodies, ensure_ascii=False),
-                  json.dumps(target, ensure_ascii=False), dong, start_date, link, _ts(_now())))
+                  json.dumps(target or [], ensure_ascii=False), json.dumps(target_dongs or [], ensure_ascii=False),
+                  scope, dong, start_date, link, _ts(_now())))
+
+
+def notice_visible(notice: dict, user: dict) -> bool:
+    """시민 화면에 이 공지를 보일지. 맞춤 기준은 국적·거주 동만 (체류자격 미수집, 결정 R6-21).
+
+    공무원은 전부 본다. 내국인 이웃은 '모든 주민' 공지만 본다 (대상 지정 공지는 외국인 주민 대상).
+    """
+    if user.get("role") == "official" or notice.get("scope", "all") != "target":
+        return True
+    if user.get("is_korean"):
+        return False
+    nats, dongs = notice.get("target") or [], notice.get("target_dongs") or []
+    return (not nats or user.get("nationality") in nats) and (not dongs or user.get("dong") in dongs)
+
+
+def member_languages(nats: list) -> dict:
+    """대상 국적 외국인 회원의 언어방 분포 {언어: 명} — 국적 ≠ 언어(결정 R2-7)라 번역 언어를 회원 DB로 고른다."""
+    if not nats:
+        return {}
+    rows = _rows("SELECT language, COUNT(*) AS n FROM users WHERE role='resident' AND is_korean=0 AND nationality IN"
+                 " (%s) GROUP BY language" % ",".join("?" * len(nats)), list(nats))
+    return {r["language"]: r["n"] for r in rows}
+
+
+def count_audience(nats: list = None, dongs: list = None) -> int:
+    """맞춤 공지를 받을 외국인 회원 수 (국적·거주 동 조건, 빈 조건은 무시). 시연 DB는 시드(가상) 회원."""
+    sql, params = "SELECT COUNT(*) AS n FROM users WHERE role='resident' AND is_korean=0", []
+    if nats:
+        sql += " AND nationality IN (%s)" % ",".join("?" * len(nats))
+        params += list(nats)
+    if dongs:
+        sql += " AND dong IN (%s)" % ",".join("?" * len(dongs))
+        params += list(dongs)
+    return _rows(sql, params)[0]["n"]
 
 
 # ------------------------------------------------------------------ 공식 Q&A
 def list_questions(pending_only: bool = False) -> list:
     return _rows("SELECT * FROM questions" + (" WHERE answer IS NULL" if pending_only else "")
-                 + " ORDER BY created_at DESC")
+                 + " ORDER BY created_at DESC, id DESC")
 
 
 def add_question(user: dict, title: str, body: str) -> int:
@@ -270,6 +371,145 @@ def add_question(user: dict, title: str, body: str) -> int:
 def answer_question(qid: int, official_id: int, answer: str) -> None:
     _exec("UPDATE questions SET answer=?, answered_by=?, answered_at=? WHERE id=?",
           (answer, official_id, _ts(_now()), qid))
+
+
+# ------------------------------------------------------------------ 시민 앱 (v0.5, 2026-11-20 · 결정 13)
+def create_user(nationality, language: str, dong: str, is_korean: bool) -> dict:
+    """간편가입 — 국적 · 언어 · 거주 동만 스스로 고른다(결정 R2-5). 이름 · 연락처 · 체류자격은 받지 않는다."""
+    if dong not in DONG_NAME:
+        raise ValueError("거주 동을 골라 주세요")
+    if language not in ROOMS or language == "exchange":
+        raise ValueError("언어를 골라 주세요")
+    if is_korean:
+        nationality = None
+    elif nationality not in NAT_NAMES:
+        raise ValueError("국적을 골라 주세요")
+    uid = _exec("INSERT INTO users(nationality, language, dong, role, is_korean, joined_at) VALUES(?,?,?,?,?,?)",
+                (nationality, language, dong, "resident", 1 if is_korean else 0, _ts(_now())))
+    return user_by_id(uid)
+
+
+def user_by_id(user_id: int) -> dict:
+    rows = _rows("SELECT * FROM users WHERE id=?", (user_id,))
+    return rows[0] if rows else None
+
+
+def update_user(user_id: int, language: str = None, dong: str = None) -> dict:
+    if language is not None:
+        if language not in ROOMS or language == "exchange":
+            raise ValueError("언어를 골라 주세요")
+        _exec("UPDATE users SET language=? WHERE id=?", (language, user_id))
+    if dong is not None:
+        if dong not in DONG_NAME:
+            raise ValueError("거주 동을 골라 주세요")
+        _exec("UPDATE users SET dong=? WHERE id=?", (dong, user_id))
+    return user_by_id(user_id)
+
+
+def create_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(24)
+    _exec("INSERT INTO sessions(token, user_id, created_at) VALUES(?,?,?)", (token, user_id, _ts(_now())))
+    return token
+
+
+def user_by_token(token: str) -> dict:
+    if not token:
+        return None
+    rows = _rows("SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?", (token,))
+    return rows[0] if rows else None
+
+
+def get_post(post_id: int, include_hidden: bool = False) -> dict:
+    rows = _rows("""SELECT p.*, u.nationality, u.language, u.is_korean,
+                    (SELECT COUNT(*) FROM likes l WHERE l.post_id=p.id) AS likes,
+                    (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id) AS n_comments
+                    FROM posts p JOIN users u ON u.id=p.author_id WHERE p.id=?""", (post_id,))
+    if not rows or (rows[0]["is_hidden"] and not include_hidden):
+        return None
+    if not ENABLE_PHASE2 and rows[0]["tag"] in PHASE2_TAGS:
+        return None
+    rows[0]["extra"] = json.loads(rows[0]["extra"]) if rows[0]["extra"] else {}
+    return rows[0]
+
+
+def comment_thread(post_id: int, post_author: int) -> list:
+    """댓글 + 익명 번호(0 = 글쓴이, 1·2… = 익명1·2…) — 화면 언어로 '익명1'을 붙일 수 있게 번호만 준다."""
+    rows = _rows("SELECT c.*, u.nationality, u.is_korean FROM comments c JOIN users u ON u.id=c.author_id "
+                 "WHERE c.post_id=? ORDER BY c.created_at, c.id", (post_id,))
+    anon = {}
+    for r in rows:
+        if r["author_id"] == post_author:
+            r["alias_n"] = 0
+        else:
+            anon.setdefault(r["author_id"], len(anon) + 1)
+            r["alias_n"] = anon[r["author_id"]]
+    return rows
+
+
+def add_place_at(user: dict, name: str, kind: str, cuisine: str, dong: str, lon: float, lat: float) -> int:
+    """주민이 지도에서 직접 찍은 가게 · 장소 제보(precise=1). 이웃 추천 PLACE_VERIFY_UPVOTES개면 '검증됨'."""
+    if not (name or "").strip():
+        raise ValueError("가게 이름을 적어 주세요")
+    if dong not in DONG_NAME:
+        raise ValueError("안산 안의 위치를 골라 주세요")
+    return _exec("INSERT INTO places(name, category, cuisine, dong, lon, lat, source, created_by, created_at, precise)"
+                 " VALUES(?,?,?,?,?,?,?,?,?,1)",
+                 (name.strip()[:60], kind, cuisine or "", dong, round(lon, 6), round(lat, 6), "community",
+                  user["id"], _ts(_now())))
+
+
+def list_app_places(user_id: int = None) -> list:
+    rows = _rows("""SELECT p.id, p.name, p.category AS kind, p.cuisine, p.dong, p.lon, p.lat, p.created_at,
+                    p.created_by, (SELECT COUNT(*) FROM place_votes v WHERE v.place_id=p.id) AS votes
+                    FROM places p WHERE p.precise=1 ORDER BY p.created_at DESC, p.id DESC""")
+    voted = {r["place_id"] for r in _rows("SELECT place_id FROM place_votes WHERE user_id=?", (user_id,))} \
+        if user_id else set()
+    for r in rows:
+        r["verified"] = r["votes"] >= PLACE_VERIFY_UPVOTES
+        r["voted"] = r["id"] in voted
+        owner = r.pop("created_by")              # 로그인 안 한 요청에도 올린 사람 번호는 내보내지 않는다
+        r["mine"] = user_id is not None and owner == user_id
+    return rows
+
+
+def place_votes(place_id: int) -> int:
+    return _rows("SELECT COUNT(*) AS n FROM place_votes WHERE place_id=?", (place_id,))[0]["n"]
+
+
+def toggle_shop_vote(shop_id: str, user_id: int) -> bool:
+    """공공 상가정보 가게에 '추천해요' — 다시 누르면 취소. 반환: 지금 추천한 상태인지."""
+    if _rows("SELECT 1 FROM shop_votes WHERE shop_id=? AND user_id=?", (shop_id, user_id)):
+        _exec("DELETE FROM shop_votes WHERE shop_id=? AND user_id=?", (shop_id, user_id))
+        return False
+    _exec("INSERT INTO shop_votes(shop_id, user_id) VALUES(?,?)", (shop_id, user_id))
+    return True
+
+
+def shop_vote_counts(user_id: int = None) -> tuple:
+    counts = {r["shop_id"]: r["n"] for r in _rows("SELECT shop_id, COUNT(*) AS n FROM shop_votes GROUP BY shop_id")}
+    mine = {r["shop_id"] for r in _rows("SELECT shop_id FROM shop_votes WHERE user_id=?", (user_id,))} \
+        if user_id else set()
+    return counts, mine
+
+
+SHOP_FEEDBACK_REASONS = ("closed", "wrong_type", "wrong_place", "other")
+
+
+def add_shop_feedback(shop_id: str, user_id: int, reason: str) -> None:
+    """'정보가 달라요' — 상호로 분류한 가게(결정 13)를 관리자가 검수하도록 쌓는다."""
+    if reason not in SHOP_FEEDBACK_REASONS:
+        raise ValueError("이유를 골라 주세요")
+    _exec("INSERT OR IGNORE INTO shop_feedback(shop_id, user_id, reason, created_at) VALUES(?,?,?,?)",
+          (shop_id, user_id, reason, _ts(_now())))
+
+
+def open_shop_feedback() -> list:
+    return _rows("SELECT shop_id, reason, COUNT(*) AS n, MAX(created_at) AS last FROM shop_feedback "
+                 "WHERE status='open' GROUP BY shop_id, reason ORDER BY n DESC, last DESC")
+
+
+def close_shop_feedback(shop_id: str) -> None:
+    _exec("UPDATE shop_feedback SET status='closed' WHERE shop_id=?", (shop_id,))
 
 
 # ------------------------------------------------------------------ KPI
@@ -294,9 +534,10 @@ def kpi_snapshot() -> dict:
 
 
 # ------------------------------------------------------------------ 시드 (가상)
+# v0.3: 통신 21개국 범주에 맞춤 — 우크라이나 · 키르기스스탄 회원은 '기타'(통신 자료에서도 기타로 잡힌다)
 _NAT_W = {"중국": 34, "우즈베키스탄": 14, "러시아": 9, "카자흐스탄": 6, "베트남": 10, "인도네시아": 4,
-          "네팔": 4, "필리핀": 3, "미얀마": 2, "몽골": 2, "우크라이나": 2, "캄보디아": 2, "방글라데시": 1,
-          "키르기스스탄": 1, "태국": 1, "파키스탄": 1, "스리랑카": 1, "미국": 1, "일본": 1, "인도": 1}
+          "네팔": 4, "필리핀": 3, "미얀마": 2, "몽골": 2, "기타": 3, "캄보디아": 2, "방글라데시": 1,
+          "태국": 1, "파키스탄": 1, "스리랑카": 1, "미국": 1, "일본": 1, "인도": 1}
 _JOIN_PER_MONTH = {"2026-01": 25, "2026-02": 30, "2026-03": 46, "2026-04": 52, "2026-05": 49,
                    "2026-06": 51, "2026-07": 40, "2026-08": 38, "2026-09": 44, "2026-10": 41, "2026-11": 14}
 _NAT_LANG = {n[0]: n[3] for n in NATIONS}
@@ -498,7 +739,7 @@ _NOTICES = [
                        "Hội chợ năm mới cho cư dân nói tiếng Nga (mẫu)"),
      _t("고려인·중앙아시아 주민 누구나.", "Open to all Russian-speaking neighbors.", "欢迎所有俄语圈居民。",
         "Для всех русскоязычных соседей.", "Dành cho mọi cư dân nói tiếng Nga."),
-     ["우즈베키스탄", "러시아", "카자흐스탄", "키르기스스탄"], "선부2동", "2026-12-19", ""),
+     ["우즈베키스탄", "러시아", "카자흐스탄"], "선부2동", "2026-12-19", ""),
     ("notice", "규칙", _t("커뮤니티 규칙 — 사업장명 금지·물품만 거래·혐오 표현 금지",
                        "Community rules — no company names in reviews, goods only in market, no hate speech",
                        "社区规则——评价禁止写公司名、跳蚤市场仅限物品、禁止仇恨言论",
@@ -534,9 +775,7 @@ def _seed() -> None:
     nats, nat_w = list(_NAT_W), list(_NAT_W.values())
     with closing(connect()) as con:
         for key, p in PERSONAS.items():
-            con.execute("INSERT INTO users(persona_key, nationality, language, dong, role, is_korean, joined_at)"
-                        " VALUES(?,?,?,?,?,?,?)", (key, p["nationality"], p["language"], p["dong"], p["role"],
-                                                   p["is_korean"], p["joined"] + " 09:00:00"))
+            _insert_persona(con, key, p)
         for ym, n in _JOIN_PER_MONTH.items():
             for _ in range(n):
                 nat = rnd.choices(nats, nat_w)[0]

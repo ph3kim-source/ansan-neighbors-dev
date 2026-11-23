@@ -97,3 +97,39 @@ def dong_centroids():
         point = geom.representative_point()
         result[code] = (point.x, point.y)
     return result
+
+
+@lru_cache(maxsize=1)
+def _dong_index():
+    from shapely.prepared import prep
+    return [(code, prep(geom)) for code, _, geom, _ in load_dong_features()]
+
+
+def dong_at(lon: float, lat: float):
+    """경위도가 속한 행정동 코드 — 안산 밖이면 None (시민 앱의 장소 제보)."""
+    from shapely.geometry import Point
+    pt = Point(float(lon), float(lat))
+    for code, geom in _dong_index():
+        if geom.covers(pt):
+            return code
+    return None
+
+
+@lru_cache(maxsize=1)
+def dong_geojson_light(tolerance: float = 0.00008) -> dict:
+    """시민 앱 지도용 동 경계 — 단순화(약 8m)하고 좌표를 6자리로 줄인 GeoJSON. 속성은 코드 · 이름만."""
+    from shapely.geometry import mapping
+
+    def rounded(obj):
+        if isinstance(obj, (list, tuple)):
+            if obj and isinstance(obj[0], (int, float)):
+                return [round(obj[0], 6), round(obj[1], 6)]
+            return [rounded(x) for x in obj]
+        return obj
+
+    feats = []
+    for code, name, geom, _ in load_dong_features():
+        g = mapping(geom.simplify(tolerance, preserve_topology=True))
+        feats.append({"type": "Feature", "properties": {"code": code, "name": name},
+                      "geometry": {"type": g["type"], "coordinates": rounded(g["coordinates"])}})
+    return {"type": "FeatureCollection", "features": feats}

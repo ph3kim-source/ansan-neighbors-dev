@@ -1,0 +1,57 @@
+상호명,행정동명,action,kind,sub,cuisine,note
+소담촌*,,exclude,,,,한식 샤브샤브 체인(업종이 '기타 동남아식'으로 잘못 분류됨)
+더크로플*,,exclude,,,,크로플 카페(업종 오분류)
+엔돌핀7080*,,exclude,,,,주점(업종 오분류)
+노이케이커리*,,exclude,,,,케이(K) 커리 — 외국 음식점으로 보기 어려움
+오소아케이커리*,,exclude,,,,케이(K) 커리 — 외국 음식점으로 보기 어려움
+몽골리안*,,exclude,,,,한국식 닭 바비큐 체인
+하노이맥주밤거리*,,exclude,,,,국내 주점 체인(베트남 콘셉트)
+팁시타이거*,,exclude,,,,'타이거'가 '타이'로 잡힘
+바나타이거*,,exclude,,,,'타이거'가 '타이'로 잡힘
+타이칸라멘*,,exclude,,,,일본 라멘
+야타이오카*,,exclude,,,,일본 음식
+대동북카페*,,exclude,,,,'동북'이 지명이 아님
+바락마라칼국수*,,exclude,,,,칼국수(마라 요리 아님)
+미스터키친*,,exclude,,,,치킨
+발리*,,exclude,,,,'발리' 상호의 국내 주점 · 노래방 · 카페
+카발리에*,,exclude,,,,요트 카페
+동북식품,,exclude,,,,'동북'만으로는 중국 식품점인지 알 수 없음
+동북농축,,exclude,,,,'동북'만으로는 중국 식품점인지 알 수 없음
+흥왕즈바오위,원곡동,include,food,,cn,중국 요리(紙包魚)
+팡뚠물만두,원곡동,include,food,,cn,중국식 물만두
+쑈워이오리목점,원곡동,include,food,,cn,중국식 오리 요리
+허흑오리,원곡동,include,food,,cn,중국식 오리 요리
+천부목통어,원곡동,include,food,,cn,중국 요리
+연훈화료,원곡동,include,food,,cn,중국 요리
+판기자훠푸,원곡동,include,food,,cn,중국 요리(火锅)
+스팡차이,원곡동,include,food,,cn,중국 요리
+북경닭날개,원곡동,include,food,,cn,중국식 꼬치 · 닭날개
+팔계훈제,원곡동,include,food,,cn,중국식 훈제 요리
+마마교자관,원곡동,include,food,,cn,중국식 만두
+천희교자관,원곡동,include,food,,cn,중국식 만두
+미국가주우육면대왕*,원곡동,include,food,,cn,중국 우육면 체인(美国加州牛肉面大王)
+노충칭샤브샤브,원곡동,include,food,,cn,충칭식 훠궈
+중경해물샤브샤브부페,원곡동,include,food,,cn,충칭식 훠궈
+양쟈쨩,원곡동,include,grocery,,cn,중국 식품
+만복중국슈퍼,원곡동,include,grocery,,cn,중국 식품
+청청한중마트,원곡동,include,grocery,,cn,한중 식품
+카비르인터프라이시스,원곡동,include,grocery,,world,남아시아 식품(상호 Kabir)
+코진카,원곡동,include,grocery,,ca,러시아어 'корзинка'(바구니) — 러시아 · 중앙아시아 식품
+코르진카,원곡동,include,grocery,,ca,러시아어 'корзинка'(바구니) — 러시아 · 중앙아시아 식품
+파라다이스월드푸드마트&무역,원곡동,include,grocery,,world,세계 식품
+알마디나트레더인터내셔날,원곡동,include,grocery,,halal,할랄 식품(Al-Madina)
+레표시카,원곡동,include,food,,ca,러시아어 'лепёшка'(중앙아시아 빵)
+탄드르하우스,원곡동,include,food,,ca,탄디르 화덕(중앙아시아)
+바르바리스,원곡동,include,food,,ca,러시아 · 중앙아시아 음식
+쿨리나리야,원곡동,include,food,,ca,러시아어 'кулинария'(반찬 · 빵)
+샴푸르그릴,원곡동,include,food,,ca,샤슬릭 꼬치(шампур)
+아네카라사,원곡동,include,food,,id,인도네시아어 'aneka rasa'
+가톳카차,원곡동,include,food,,id,인도네시아(Gatotkaca)
+사하밧트셀룰러,원곡동,include,service,phone,id,인도네시아 · 말레이어 'sahabat'(친구) 휴대폰
+아프리디트레이딩,원곡동,include,service,phone,halal,남아시아 휴대폰 가게(Afridi)
+다문화국제여행사,원곡동,include,service,travel,world,외국인 주민 대상 여행사
+아시아여행사안산,원곡동,include,service,travel,world,외국인 주민 대상 여행사
+부카리트래블,원곡동,exclude,,,,2026-11-20 사용자가 네이버 지도에서 찾지 못함(손 목록으로 넣었던 곳 — 이름만 보고 넣은 것은 확인이 아니다)
+팡타이훈제면식점,원곡동,include,food,,cn,중국식 훈제 · 면 요리('타이'가 태국으로 잡힘)
+우정외국어번역,원곡동,exclude,,,,2026-11-20 사용자가 네이버 지도에서 찾지 못함
+케이트랜스,,exclude,,,,2026-11-20 사용자가 네이버 지도에서 찾지 못함(선부동 · 건물명 없는 4층 — 사무실 · 집 주소 등록 추정)
